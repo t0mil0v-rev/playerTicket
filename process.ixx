@@ -95,7 +95,57 @@ inline std::optional<target_info> check_emul() noexcept {
 }
 
 [[nodiscard]]
-inline std::optional<std::string> scan(HANDLE handle) noexcept {
+inline std::optional<std::string> scan_bluestacks(HANDLE handle) noexcept {
+    MEMORY_BASIC_INFORMATION mbi{};
+    uintptr_t addr = 0;
+    std::vector<uint8_t> buf;
+
+    while (VirtualQueryEx(handle, reinterpret_cast<LPCVOID>(addr), &mbi, sizeof(mbi))) {
+        if (mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE &&
+            (mbi.Protect == PAGE_READWRITE || mbi.Protect == PAGE_EXECUTE_READWRITE) &&
+            mbi.RegionSize >= 64 * 1024)
+        {
+            if (buf.size() < mbi.RegionSize) {
+                buf.resize(mbi.RegionSize);
+            }
+
+            SIZE_T bytes_read = 0;
+            if (ReadProcessMemory(handle, mbi.BaseAddress, buf.data(), mbi.RegionSize, &bytes_read)
+                && bytes_read >= 64)
+            {
+                for (size_t i = 0; i + 64 <= bytes_read; i += 8) {
+                    const uint32_t len = *reinterpret_cast<const uint32_t*>(buf.data() + i + 0x18);
+                    if (len == 32 && *reinterpret_cast<const uint32_t*>(buf.data() + i + 0x1C) == 0) {
+                        const uint64_t mon = *reinterpret_cast<const uint64_t*>(buf.data() + i + 0x08);
+                        const uint64_t bnd = *reinterpret_cast<const uint64_t*>(buf.data() + i + 0x10);
+                        if (mon == 0 && bnd == 0) {
+                            bool is_valid_hex = true;
+                            for (size_t j = 0; j < 32; ++j) {
+                                if (!is_hex_char(static_cast<char>(buf[i + 0x20 + j]))) {
+                                    is_valid_hex = false;
+                                    break;
+                                }
+                            }
+                            if (is_valid_hex) {
+                                return std::string(reinterpret_cast<const char*>(buf.data() + i + 0x20), 32);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        const uintptr_t next = reinterpret_cast<uintptr_t>(mbi.BaseAddress)
+                             + (mbi.RegionSize ? mbi.RegionSize : 0x1000);
+        if (next <= addr) break;
+        addr = next;
+    }
+
+    return std::nullopt;
+}
+
+[[nodiscard]]
+inline std::optional<std::string> scan_ldplayer(HANDLE handle) noexcept {
     MEMORY_BASIC_INFORMATION mbi{};
     uintptr_t addr = 0;
     std::vector<uint8_t> buf;
@@ -112,7 +162,7 @@ inline std::optional<std::string> scan(HANDLE handle) noexcept {
             if (ReadProcessMemory(handle, mbi.BaseAddress, buf.data(), mbi.RegionSize, &bytes_read)
                 && bytes_read >= 64)
             {
-                // Pass 1: Standard 8-byte aligned Il2Cpp System.Byte[] object (BlueStacks 5 / 64-bit guest)
+                // Pass 1: Standard 8-byte aligned System.Byte[] object
                 for (size_t i = 0; i + 64 <= bytes_read; i += 8) {
                     const uint32_t len = *reinterpret_cast<const uint32_t*>(buf.data() + i + 0x18);
                     const uint32_t len_hi = *reinterpret_cast<const uint32_t*>(buf.data() + i + 0x1C);
@@ -128,7 +178,7 @@ inline std::optional<std::string> scan(HANDLE handle) noexcept {
                     }
                 }
 
-                // Pass 2: High-entropy string candidate scan (LDPlayer / 32-bit guest mapped RAM)
+                // Pass 2: LDPlayer 4-byte aligned System.Byte[] candidate scan
                 for (size_t i = 0; i + 48 <= bytes_read; i += 4) {
                     const uint32_t len = *reinterpret_cast<const uint32_t*>(buf.data() + i + 0x1C);
                     if (len == 32) {
@@ -151,10 +201,20 @@ inline std::optional<std::string> scan(HANDLE handle) noexcept {
 }
 
 [[nodiscard]]
+inline std::optional<std::string> scan(const target_info& target) noexcept {
+    if (target.exe_name.find("HD-Player") != std::string::npos ||
+        target.exe_name.find("BlueStacks") != std::string::npos)
+    {
+        return scan_bluestacks(target.handle);
+    }
+    return scan_ldplayer(target.handle);
+}
+
+[[nodiscard]]
 inline std::optional<std::string> get_ticket() noexcept {
     const auto target = check_emul();
     if (!target) return std::nullopt;
-    const auto token = scan(target->handle);
+    const auto token = scan(*target);
     CloseHandle(target->handle);
     return token;
 }
