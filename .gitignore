@@ -6,6 +6,9 @@
 *.pdb
 *.ilk
 *.lib
+*.zip
+*.tar.gz
+test*.*
 !lib/*.lib
 # Build directories
 .vs/

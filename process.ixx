@@ -25,13 +25,14 @@ struct target_info {
     std::string exe_name;
 };
 
-inline constexpr std::array<std::string_view, 13> KNOWN_EMULATORS = {
+inline constexpr std::array<std::string_view, 14> KNOWN_EMULATORS = {
     "HD-Player.exe",       // BlueStacks 5
+    "Ld9BoxHeadless.exe",   // LDPlayer 9 VM Headless
+    "dnplayer.exe",        // LDPlayer 9 / 5 / 4 Launcher
+    "LDPlayer.exe",        // LDPlayer main
+    "LdBoxHeadless.exe",   // LDPlayer older headless
     "BlueStacks.exe",      // BlueStacks
     "BlueStacksX.exe",     // BlueStacks X
-    "dnplayer.exe",        // LDPlayer 9 / 5 / 4
-    "LDPlayer.exe",        // LDPlayer
-    "LdBoxHeadless.exe",   // LDPlayer headless
     "NemuPlayer.exe",      // MuMu Player 12
     "NemuHeadless.exe",    // MuMu Player headless
     "MuMuPlayer.exe",      // MuMu Player
@@ -80,12 +81,10 @@ inline std::optional<std::string> scan(HANDLE handle) noexcept {
     MEMORY_BASIC_INFORMATION mbi{};
     uintptr_t addr = 0;
     std::vector<uint8_t> buf;
-    std::string found_token;
 
     while (VirtualQueryEx(handle, reinterpret_cast<LPCVOID>(addr), &mbi, sizeof(mbi))) {
-        if (mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE &&
-            (mbi.Protect == PAGE_READWRITE || mbi.Protect == PAGE_EXECUTE_READWRITE) &&
-            mbi.RegionSize >= 64 * 1024)
+        if (mbi.State == MEM_COMMIT && (mbi.Type == MEM_PRIVATE || mbi.Type == MEM_MAPPED) &&
+            !(mbi.Protect & PAGE_NOACCESS) && !(mbi.Protect & PAGE_GUARD))
         {
             if (buf.size() < mbi.RegionSize) {
                 buf.resize(mbi.RegionSize);
@@ -95,6 +94,7 @@ inline std::optional<std::string> scan(HANDLE handle) noexcept {
             if (ReadProcessMemory(handle, mbi.BaseAddress, buf.data(), mbi.RegionSize, &bytes_read)
                 && bytes_read >= 64)
             {
+                // Try 8-byte alignment for standard Il2Cpp array layout
                 for (size_t i = 0; i + 64 <= bytes_read; i += 8) {
                     const uint32_t len = *reinterpret_cast<const uint32_t*>(buf.data() + i + 0x18);
                     if (len == 32 && *reinterpret_cast<const uint32_t*>(buf.data() + i + 0x1C) == 0) {
@@ -109,9 +109,25 @@ inline std::optional<std::string> scan(HANDLE handle) noexcept {
                                 }
                             }
                             if (is_valid_hex) {
-                                found_token.assign(reinterpret_cast<const char*>(buf.data() + i + 0x20), 32);
-                                return found_token;
+                                return std::string(reinterpret_cast<const char*>(buf.data() + i + 0x20), 32);
                             }
+                        }
+                    }
+                }
+
+                // Fallback for 4-byte aligned / alternative offset structures in emulators like LDPlayer
+                for (size_t i = 0; i + 48 <= bytes_read; i += 4) {
+                    const uint32_t len = *reinterpret_cast<const uint32_t*>(buf.data() + i + 0x1C);
+                    if (len == 32) {
+                        bool is_valid_hex = true;
+                        for (size_t j = 0; j < 32; ++j) {
+                            if (!is_hex_char(static_cast<char>(buf[i + 0x20 + j]))) {
+                                is_valid_hex = false;
+                                break;
+                            }
+                        }
+                        if (is_valid_hex) {
+                            return std::string(reinterpret_cast<const char*>(buf.data() + i + 0x20), 32);
                         }
                     }
                 }
