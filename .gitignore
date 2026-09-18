@@ -1,0 +1,13 @@
+# Build artifacts
+*.obj
+*.o
+*.a
+*.ifc
+*.pdb
+*.ilk
+*.lib
+!lib/*.lib
+# Build directories
+.vs/
+.cache/
+gcm.cache/
