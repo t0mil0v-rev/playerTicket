@@ -48,6 +48,24 @@ constexpr bool is_hex_char(char c) noexcept {
 }
 
 [[nodiscard]]
+inline bool is_authentic_token(std::string_view s) noexcept {
+    if (s.length() != 32) return false;
+    uint32_t mask = 0;
+    size_t unique_count = 0;
+
+    for (char c : s) {
+        if (!is_hex_char(c)) return false;
+        uint32_t val = (c >= '0' && c <= '9') ? (c - '0') : (10 + c - 'a');
+        if (!(mask & (1u << val))) {
+            mask |= (1u << val);
+            unique_count++;
+        }
+    }
+    // Authentic Standoff 2 session tickets have high entropy (at least 8 distinct hex chars)
+    return unique_count >= 8;
+}
+
+[[nodiscard]]
 inline std::optional<target_info> check_emul() noexcept {
     const HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snap == INVALID_HANDLE_VALUE) return std::nullopt;
@@ -94,40 +112,29 @@ inline std::optional<std::string> scan(HANDLE handle) noexcept {
             if (ReadProcessMemory(handle, mbi.BaseAddress, buf.data(), mbi.RegionSize, &bytes_read)
                 && bytes_read >= 64)
             {
-                // Try 8-byte alignment for standard Il2Cpp array layout
+                // Pass 1: Standard 8-byte aligned Il2Cpp System.Byte[] object (BlueStacks 5 / 64-bit guest)
                 for (size_t i = 0; i + 64 <= bytes_read; i += 8) {
                     const uint32_t len = *reinterpret_cast<const uint32_t*>(buf.data() + i + 0x18);
-                    if (len == 32 && *reinterpret_cast<const uint32_t*>(buf.data() + i + 0x1C) == 0) {
+                    const uint32_t len_hi = *reinterpret_cast<const uint32_t*>(buf.data() + i + 0x1C);
+                    if (len == 32 && len_hi == 0) {
                         const uint64_t mon = *reinterpret_cast<const uint64_t*>(buf.data() + i + 0x08);
                         const uint64_t bnd = *reinterpret_cast<const uint64_t*>(buf.data() + i + 0x10);
                         if (mon == 0 && bnd == 0) {
-                            bool is_valid_hex = true;
-                            for (size_t j = 0; j < 32; ++j) {
-                                if (!is_hex_char(static_cast<char>(buf[i + 0x20 + j]))) {
-                                    is_valid_hex = false;
-                                    break;
-                                }
-                            }
-                            if (is_valid_hex) {
-                                return std::string(reinterpret_cast<const char*>(buf.data() + i + 0x20), 32);
+                            std::string candidate(reinterpret_cast<const char*>(buf.data() + i + 0x20), 32);
+                            if (is_authentic_token(candidate)) {
+                                return candidate;
                             }
                         }
                     }
                 }
 
-                // Fallback for 4-byte aligned / alternative offset structures in emulators like LDPlayer
+                // Pass 2: High-entropy string candidate scan (LDPlayer / 32-bit guest mapped RAM)
                 for (size_t i = 0; i + 48 <= bytes_read; i += 4) {
                     const uint32_t len = *reinterpret_cast<const uint32_t*>(buf.data() + i + 0x1C);
                     if (len == 32) {
-                        bool is_valid_hex = true;
-                        for (size_t j = 0; j < 32; ++j) {
-                            if (!is_hex_char(static_cast<char>(buf[i + 0x20 + j]))) {
-                                is_valid_hex = false;
-                                break;
-                            }
-                        }
-                        if (is_valid_hex) {
-                            return std::string(reinterpret_cast<const char*>(buf.data() + i + 0x20), 32);
+                        std::string candidate(reinterpret_cast<const char*>(buf.data() + i + 0x20), 32);
+                        if (is_authentic_token(candidate)) {
+                            return candidate;
                         }
                     }
                 }
