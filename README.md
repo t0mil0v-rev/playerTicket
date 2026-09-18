@@ -12,7 +12,7 @@ Reads the handshake(playerTicket) directly from the emulator's process memory wi
 - Windows 10/11 x64
 - Supported emulators:
   - **BlueStacks 5** (`HD-Player.exe`)
-  - **LDPlayer 9** (`dnplayer.exe`)
+  - **LDPlayer 9** (`Ld9BoxHeadless.exe`)
 
 ### How to use
 1. Launch the emulator and log in to Standoff 2 (stay in the main menu).
