@@ -19,7 +19,9 @@ struct target_info {
 };
 
 [[nodiscard]] std::optional<target_info> check_emul() noexcept;
-[[nodiscard]] std::optional<std::string> scan(HANDLE handle) noexcept;
+[[nodiscard]] std::optional<std::string> scan_bluestacks(HANDLE handle) noexcept;
+[[nodiscard]] std::optional<std::string> scan_ldplayer(HANDLE handle) noexcept;
+[[nodiscard]] std::optional<std::string> scan(const target_info& target) noexcept;
 [[nodiscard]] std::optional<std::string> get_ticket() noexcept;
 
 } // namespace process

@@ -25,21 +25,10 @@ struct target_info {
     std::string exe_name;
 };
 
-inline constexpr std::array<std::string_view, 14> KNOWN_EMULATORS = {
+inline constexpr std::array<std::string_view, 3> KNOWN_EMULATORS = {
     "HD-Player.exe",       // BlueStacks 5
     "Ld9BoxHeadless.exe",   // LDPlayer 9 VM Headless
-    "dnplayer.exe",        // LDPlayer 9 / 5 / 4 Launcher
-    "LDPlayer.exe",        // LDPlayer main
-    "LdBoxHeadless.exe",   // LDPlayer older headless
-    "BlueStacks.exe",      // BlueStacks
-    "BlueStacksX.exe",     // BlueStacks X
-    "NemuPlayer.exe",      // MuMu Player 12
-    "NemuHeadless.exe",    // MuMu Player headless
-    "MuMuPlayer.exe",      // MuMu Player
-    "Nox.exe",             // Nox Player
-    "NoxVMHandle.exe",     // Nox VM
-    "MEmu.exe",            // MEmu Play
-    "MEmuHeadless.exe"     // MEmu headless
+    "dnplayer.exe"         // LDPlayer 9 Launcher
 };
 
 [[nodiscard]]
