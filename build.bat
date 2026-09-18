@@ -4,7 +4,9 @@ REM Author: DoubleLuc (https://github.com/t0mil0v-rev)
 
 if not exist "lib" mkdir "lib"
 
-:: Try MSVC (cl.exe) with C++20/C++23 Modules
+:: Try MSVC (cl.exe) with C++23 Modules
+if exist "C:\PROGRA~2\MICROS~1\2022\BUILDT~1\VC\AUXILI~1\Build\vcvars64.bat" goto compile_msvc
+if exist "C:\PROGRA~1\MICROS~2\2022\COMMUN~1\VC\Auxiliary\Build\vcvars64.bat" goto compile_msvc
 where cl >nul 2>nul
 if not errorlevel 1 goto compile_msvc
 
@@ -21,9 +23,10 @@ echo [!] Error: No C++20/23 compiler found.
 exit /b 1
 
 :compile_msvc
-echo [*] Compiling static library (lib/tokenpizder.lib) and executable (token.exe) via MSVC...
+echo [*] Compiling static library (lib/tokenpizder.lib) and executable (token.exe) via MSVC C++23 Modules...
+call "C:\PROGRA~2\MICROS~1\2022\BUILDT~1\VC\AUXILI~1\Build\vcvars64.bat" >nul 2>nul || call "C:\PROGRA~1\MICROS~2\2022\COMMUN~1\VC\Auxiliary\Build\vcvars64.bat" >nul 2>nul
 cl /std:c++latest /EHsc /O2 /utf-8 /c memory.ixx process.ixx
-%VCINSTALLDIR%\bin\Hostx64\x64\lib.exe /nologo memory.obj process.obj /out:lib\tokenpizder.lib 2>nul || lib /nologo memory.obj process.obj /out:lib\tokenpizder.lib
+lib /nologo memory.obj process.obj /out:lib\tokenpizder.lib
 cl /std:c++latest /EHsc /O2 /utf-8 main.cxx memory.obj process.obj /Fe:token.exe /link Psapi.lib
 if not errorlevel 1 (echo [+] Build OK: lib\tokenpizder.lib, token.exe) else (echo [!] Build FAILED)
 exit /b %errorlevel%
